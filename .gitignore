@@ -1,0 +1,9 @@
+.godot/
+.DS_Store
+build/
+.tools/
+openspec/
+.agents/
+.codex/
+__pycache__/
+*.py[cod]
