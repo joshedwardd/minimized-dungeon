@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://bbdrn11nkhkpc"
+path="res://.godot/imported/dungeon-pixel.fnt-2ae1b226db4dd3e0c61eac43e5a0c5ea.fontdata"
+
+[deps]
+
+source_file="res://assets/ui/font/dungeon-pixel.fnt"
+dest_files=["res://.godot/imported/dungeon-pixel.fnt-2ae1b226db4dd3e0c61eac43e5a0c5ea.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2
