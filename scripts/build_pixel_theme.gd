@@ -1,6 +1,10 @@
 extends SceneTree
 
 const FRAME = preload("res://assets/ui/frame.svg")
+const PANEL_FRAME = preload("res://assets/gemini/panel-frame.png")
+const TAB_FRAME = preload("res://assets/gemini/tab-frame.png")
+const SELECTED_TAB_FRAME = preload("res://assets/gemini/selected-tab-frame.png")
+const TOOLTIP_FRAME = preload("res://assets/gemini/tooltip-frame.png")
 const FOCUS = preload("res://assets/ui/focus.svg")
 const CHECK = preload("res://assets/ui/check.svg")
 const ARROW = preload("res://assets/ui/arrow.svg")
@@ -21,15 +25,14 @@ func _initialize() -> void:
 		quit(1)
 		return
 	theme.default_font_size = 16
-	var normal := frame()
-	var hover := frame(Color(1.25, 1.25, 1.2))
-	var pressed := frame(Color(0.75, 0.8, 0.85))
+	var normal := frame(TAB_FRAME)
+	var hover := frame(TAB_FRAME, Color(1.25, 1.25, 1.2))
+	var pressed := frame(SELECTED_TAB_FRAME)
 	pressed.content_margin_top = 10
 	pressed.content_margin_bottom = 6
-	var disabled := frame(Color(0.65, 0.7, 0.75))
-	var focus := frame()
-	focus.texture = FOCUS
-	var panel := frame(Color(0.6, 0.65, 0.7), 16)
+	var disabled := frame(TAB_FRAME, Color(0.65, 0.7, 0.75))
+	var focus := frame(FOCUS, Color.WHITE, 10, 4)
+	var panel := frame(PANEL_FRAME, Color.WHITE, 16, 8)
 	for type in ["Button", "OptionButton", "CheckButton", "CheckBox", "MenuButton"]:
 		for state in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
 			var styles := {"normal": normal, "hover": hover, "pressed": pressed,
@@ -53,6 +56,7 @@ func _initialize() -> void:
 		theme.set_constant("line_spacing", type, 4)
 	for type in ["Panel", "PanelContainer", "TooltipPanel", "PopupPanel", "PopupMenu", "AcceptDialog"]:
 		theme.set_stylebox("panel", type, panel)
+	theme.set_stylebox("panel", "TooltipPanel", frame(TOOLTIP_FRAME))
 	theme.set_stylebox("embedded_border", "Window", panel)
 	theme.set_stylebox("embedded_unfocused_border", "Window", panel)
 	theme.set_color("title_color", "Window", PAPER)
@@ -98,14 +102,14 @@ func _initialize() -> void:
 	quit()
 
 
-func frame(tint := Color.WHITE, padding := 10.0) -> StyleBoxTexture:
+func frame(texture: Texture2D, tint := Color.WHITE, padding := 10.0, edge := 5.0) -> StyleBoxTexture:
 	var style := StyleBoxTexture.new()
-	style.texture = FRAME
+	style.texture = texture
 	style.modulate_color = tint
-	style.texture_margin_left = 4
-	style.texture_margin_right = 4
-	style.texture_margin_top = 4
-	style.texture_margin_bottom = 4
+	style.texture_margin_left = edge
+	style.texture_margin_right = edge
+	style.texture_margin_top = edge
+	style.texture_margin_bottom = edge
 	style.content_margin_left = padding
 	style.content_margin_right = padding
 	style.content_margin_top = 8

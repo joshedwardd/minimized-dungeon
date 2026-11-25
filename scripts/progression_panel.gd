@@ -5,8 +5,27 @@ signal action_requested(action: String, value: Variant)
 const Game = preload("res://scripts/game.gd")
 const Pixel = preload("res://ui/pixel_ui.gd")
 const COLORS = Pixel.RARITIES
+const ITEM_ICON_SIZE := 24
+const ITEM_GROUPS := [
+	{
+		"title": "Equipment",
+		"atlas": preload("res://assets/gemini/items-equipment-atlas.png"),
+		"items": ["Iron sword", "Bronze shield", "Knight helmet", "Leather coat", "Ember ring", "Bell charm"],
+	},
+	{
+		"title": "Consumables",
+		"atlas": preload("res://assets/gemini/items-consumables-atlas.png"),
+		"items": ["Healing flask", "Focus vial", "Speed tonic", "Recall scroll", "Ember lantern", "Cave mushrooms"],
+	},
+	{
+		"title": "Crafting materials",
+		"atlas": preload("res://assets/gemini/items-crafting-materials-atlas.png"),
+		"items": ["Iron ore", "Copper shard", "Wisp crystal", "Moss fiber", "Rat fang", "Ember core"],
+	},
+]
 
 var summary: Label
+var hero_xp: Label
 var notice: Label
 var hero_buttons: Dictionary = {}
 var pet_rows: Dictionary = {}
@@ -23,7 +42,7 @@ var result_message := ""
 
 
 func build(ui_theme: Theme) -> void:
-	title = "Minimized Dungeon - Hero and Pets"
+	title = "Minimized Dungeon - Upgrades"
 	size = Vector2i(620, 620)
 	min_size = Vector2i(300, 200)
 	theme = ui_theme
@@ -67,7 +86,7 @@ func build(ui_theme: Theme) -> void:
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(tabs)
 	var hero := _tab(tabs, "Hero")
-	_label(hero, "Train your knight", 24)
+	hero_xp = _label(hero, "", 24)
 	_label(hero, "Each purchase improves one attribute. New stats start a new encounter.")
 	for stat in Game.ATTRIBUTES:
 		hero_buttons[stat] = _button(hero, "", func(): action_requested.emit("hero", stat))
@@ -76,6 +95,7 @@ func build(ui_theme: Theme) -> void:
 	_label(pets, "Hatch and choose a companion", 24)
 	_label(pets, "One active pet. Duplicates add one pet level.")
 	hatch_button = _button(pets, "", func(): action_requested.emit("hatch", null))
+	hatch_button.icon = Pixel.EGG
 	_label(pets, "Odds: Common 55% / Uncommon 25% / Rare 13% / Epic 6% / Legendary 1%", 16)
 	for index in Game.PETS.size():
 		var pet: Dictionary = Game.PETS[index]
@@ -100,6 +120,7 @@ func build(ui_theme: Theme) -> void:
 	_label(dungeon, "Clear a floor to unlock the next. Select harder floors manually.")
 	stage_choice = OptionButton.new()
 	stage_choice.custom_minimum_size.y = 40
+	tabs.set_tab_icon(2, Pixel.DUNGEON_ICON)
 	stage_choice.item_selected.connect(func(index: int):
 		if not updating:
 			action_requested.emit("stage", index + 1)
@@ -108,7 +129,8 @@ func build(ui_theme: Theme) -> void:
 	stage_choice.get_popup().theme = ui_theme
 	stage_choice.get_popup().prefer_native_menu = false
 	stage_note = _label(dungeon, "")
-	_label(dungeon, "Eggs: first clear of floor 1 and every fifth floor.\nRepeat victories: 10% egg chance.\nOffline: up to 8 hours of gold; no eggs or floor unlocks.")
+	_label(dungeon, "Eggs: first clear of floor 1 and every fifth floor.\nRepeat victories: 10% egg chance.\nOffline: up to 8 hours of gold and XP; no eggs or floor unlocks.")
+	_build_item_catalog(_tab(tabs, "Items"))
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 12)
 	box.add_child(actions)
@@ -128,10 +150,46 @@ func build(ui_theme: Theme) -> void:
 	)
 
 
+func _build_item_catalog(catalog: VBoxContainer) -> void:
+	for group: Dictionary in ITEM_GROUPS:
+		_label(catalog, group.title, 24)
+		var entries := HFlowContainer.new()
+		entries.add_theme_constant_override("h_separation", 12)
+		entries.add_theme_constant_override("v_separation", 8)
+		catalog.add_child(entries)
+		for index: int in group.items.size():
+			var entry := HBoxContainer.new()
+			entry.custom_minimum_size.x = 148
+			entry.add_theme_constant_override("separation", 8)
+			entries.add_child(entry)
+
+			var texture := AtlasTexture.new()
+			texture.atlas = group.atlas
+			texture.region = Rect2(
+				index % 3 * ITEM_ICON_SIZE,
+				floori(index / 3.0) * ITEM_ICON_SIZE,
+				ITEM_ICON_SIZE,
+				ITEM_ICON_SIZE
+			)
+			var icon := TextureRect.new()
+			icon.name = "ItemIcon"
+			icon.texture = texture
+			icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.custom_minimum_size = Vector2(48, 48)
+			entry.add_child(icon)
+
+			var caption := _label(entry, group.items[index])
+			caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+
 func refresh(game: RefCounted, message: String, can_change: bool, can_reset: bool = true) -> void:
 	reset_button.disabled = not can_reset
 	var stats: Dictionary = game.attributes()
 	summary.text = "%d gold  /  %d eggs  /  Floor %d" % [game.data.gold, game.data.eggs, game.data.stage]
+	hero_xp.text = "Level %d  /  %d of %d XP" % [game.hero_level(), int(game.data.xp) % Game.XP_PER_LEVEL, Game.XP_PER_LEVEL]
 	notice.text = message
 	if message != result_message:
 		clear_result()
@@ -156,14 +214,16 @@ func refresh(game: RefCounted, message: String, can_change: bool, can_reset: boo
 	if stage_choice.item_count != int(game.data.unlocked):
 		stage_choice.clear()
 		for stage in range(1, int(game.data.unlocked) + 1):
-			stage_choice.add_item("Floor %d" % stage)
+			stage_choice.add_item("Floor %d%s" % [stage, " · Boss" if Game.is_boss(stage) else ""])
 	if stage_choice.selected != int(game.data.stage) - 1:
 		stage_choice.select(int(game.data.stage) - 1)
 	stage_choice.disabled = not can_change
 	updating = false
-	stage_note.text = "Current matchup: %s. Reward: %d gold per victory." % [
-		"victory expected" if game.encounter().won else "defeat expected; upgrade or return to an easier floor",
-		game.encounter().reward]
+	var fight: Dictionary = game.encounter()
+	stage_note.text = "%s. Each victory earns %d gold and %d XP.\n%s" % [
+		"Victory expected" if fight.won else "Defeat expected. Upgrade or farm an easier floor",
+		fight.reward, game.data.stage,
+		"Clear floor %d to unlock floor %d." % [game.data.unlocked, int(game.data.unlocked) + 1] if game.data.unlocked < Game.MAX_STAGE else "All floors unlocked."]
 
 
 func show_hatch_result(result: Dictionary, message: String) -> void:

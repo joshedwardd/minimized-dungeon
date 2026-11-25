@@ -23,4 +23,4 @@ func _save_game() -> bool:
 
 
 func _build_status_menu() -> void:
-	hide_button.disabled = true
+	actions_menu.set_item_disabled(MENU_HIDE, true)
