@@ -23,4 +23,10 @@ On 2026-11-18, `creatures/moss.svg`, `ember.svg`, `swift.svg`, `stone.svg`, `wis
 
 `ui/attack.svg`, `ui/health.svg`, `ui/defense.svg`, and `ui/speed.svg` are original matching pixel attribute icons.
 
-`ui/font/dungeon-pixel.png` and `ui/font/dungeon-pixel.fnt` are generated from original glyph drawings in `scripts/build_pixel_font.py`. The user approved this local font instead of the unavailable Kenney download. No external font was copied or bundled. See `ui/font/README.md` for coverage and rebuild instructions. The static stone backdrop is original code-native geometry cached by `ui/pixel_ui.gd`.
+`ui/font/dungeon-pixel.png` and `ui/font/dungeon-pixel.fnt` are generated from original glyph drawings in `scripts/build_pixel_font.py`. The user approved this local font instead of the unavailable Kenney download. No external font was copied or bundled. See `ui/font/README.md` for coverage and rebuild instructions. The earlier stone backdrop used original code-native geometry.
+
+## Gemini artwork
+
+The full-size JPEG originals are retained under `assets/gemini/source/`. The game uses the resized dungeon backdrop, isolated toolbar icons and control frames, the sword slash, and the three 48×48 hero sprites. The preparation script removes the checkerboard from the sprite and UI crops and uses nearest-neighbor sampling. Godot imports the prepared PNGs from `assets/gemini/` and `assets/heroes/`. The equipment, consumables, and crafting material sheets use keyed magenta backgrounds and are prepared as three transparent atlases with six 24×24 cells each for the Items catalog.
+
+To rebuild the textures, run `Godot --headless --path . --script scripts/prepare_gemini_assets.gd`, then run `Godot --headless --path . --import`. Run `Godot --headless --path . --script scripts/build_pixel_theme.gd` after changing the theme builder.

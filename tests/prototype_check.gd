@@ -38,9 +38,9 @@ func run_checks() -> void:
 	check(scene.game.data.pets[pet_id] == 2, "pet upgrade UI purchases once")
 	scene.progression.stage_choice.item_selected.emit(1)
 	check(scene.game.data.stage == 2, "dungeon UI changes stage")
-	scene.pause_button.pressed.emit()
+	scene.actions_menu.id_pressed.emit(scene.MENU_PAUSE)
 	check(scene.game.data.paused, "pause UI")
-	scene.pause_button.pressed.emit()
+	scene.actions_menu.id_pressed.emit(scene.MENU_PAUSE)
 	check(not scene.game.data.paused, "resume UI")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(scene.store.path))
 	check(saved != null and saved.equipped == pet_id and saved.pets[pet_id] == 2, "UI progress persisted")
@@ -55,9 +55,25 @@ func run_checks() -> void:
 	scene.last_wall = Time.get_unix_time_from_system() - 60.0
 	scene._synchronize_game()
 	check(scene.game.data.gold > before_absence, "resume credits elapsed wall time")
+	scene._refresh_game_ui()
+	check(scene.return_summary.visible and scene.return_summary.text.contains("XP"), "durable absence shows XP and gold")
+	scene.dismiss_summary.pressed.emit()
+	check(not scene.return_summary.visible, "return summary dismisses")
 	var after_absence: int = scene.game.data.gold
 	scene._synchronize_game()
 	check(scene.game.data.gold == after_absence, "resume does not double credit")
+	var save_path: String = scene.store.path
+	scene.store.path = save_path + "/invalid/progress.json"
+	scene.last_wall = Time.get_unix_time_from_system() - 61.0
+	scene._synchronize_game()
+	scene._refresh_game_ui()
+	check(not scene.return_summary.visible, "failed save defers the return summary")
+	scene.store.path = save_path
+	check(scene._save_game(), "retry saves the offline reward")
+	scene._refresh_game_ui()
+	check(scene.return_summary.visible, "successful retry shows the pending summary")
+	scene.dismiss_summary.pressed.emit()
+
 	for pet in scene.Game.PETS:
 		scene.game.data.pets[pet.id] = 1
 	scene.game.data.remainder = 0.0
@@ -95,9 +111,13 @@ func run_checks() -> void:
 	for odds in scene.Game.ODDS:
 		odds_total += odds
 	check(odds_total == 100, "styling preserves hatch odds")
-	for child in scene.get_children():
-		if child is HBoxContainer:
-			check(child.get_rect().end.x <= 760, "HUD action row stays inside strip")
+	var menu: MenuButton = scene.actions_menu.get_parent()
+	check(menu.get_rect().end.x <= 760 and menu.visible and scene.actions_menu.item_count == 5,
+		"ambient strip keeps all actions behind a visible menu")
+	scene.game.data.unlocked = 5
+	scene.progression.refresh(scene.game, "", true)
+	check(scene.progression.stage_choice.get_item_text(4).contains("Boss"), "floor picker labels boss")
+	check(scene.progression.hero_xp.text.contains("XP"), "hero panel shows level progress")
 	scene.game.data.gold = 0
 	scene.game_message = "Save failed. Previous progress retained."
 	scene._refresh_game_ui()
@@ -117,6 +137,21 @@ func run_checks() -> void:
 	check(settings_controls.get_node("Motion").text == "Combat animation", "settings controls retain readable labels")
 	check(scene.progression.notice.text.contains("preserve the original"), "recovery instructions retain complete text")
 	check(scene.progression.summary.text.contains("1000000000000"), "full resource value remains available")
+	var catalog: Control = scene.progression.tabs.get_node("Items")
+	scene.progression.tabs.current_tab = scene.progression.tabs.get_tab_idx_from_control(catalog)
+	await process_frame
+	var icons := catalog.find_children("ItemIcon", "TextureRect", true, false)
+	check(catalog.visible and icons.size() == 18, "Items tab displays all 18 item icons")
+	var atlas_cells := {}
+	for icon: TextureRect in icons:
+		var sprite := icon.texture as AtlasTexture
+		check(sprite != null and sprite.get_size() == Vector2(24, 24), "item icon uses one 24-pixel cell")
+		if sprite != null:
+			var cell := sprite.atlas.get_image().get_region(Rect2i(sprite.region))
+			check(cell.get_used_rect().has_area() and cell.get_pixel(0, 0).a == 0.0,
+				"item art has an opaque foreground and transparent padding")
+			atlas_cells[[sprite.atlas, sprite.region]] = true
+	check(atlas_cells.size() == 18, "every item uses its own atlas cell")
 	scene.progression.tabs.current_tab = 0
 	await process_frame
 	await process_frame

@@ -19,12 +19,13 @@ func read_progress(game: RefCounted) -> void:
 			_restore_backup(game)
 		return
 	var raw: Variant = _read(path)
-	if raw is Dictionary and raw.get("version", 1) != 1:
+	var version: Variant = raw.get("version", 1) if raw is Dictionary else 1
+	if version != 1 and version != Game.SAVE_VERSION:
 		writable = false
 		message = "Save version is unsupported. Original retained. Close the game and back up progress.json before resetting."
 		return
 	if Game.valid(raw):
-		game.data = raw
+		_load_progress(game, raw)
 		return
 	_restore_backup(game)
 
@@ -37,17 +38,35 @@ func _restore_backup(game: RefCounted) -> void:
 			writable = false
 			message = "Cannot preserve the invalid save. Close the game and back up progress.json before resetting."
 			return
-		game.data = raw
+		_load_progress(game, raw)
 		message = "Recovered backup. The invalid save was retained separately."
 	else:
 		writable = false
 		message = "No valid save found. Original files retained. Close the game and back them up before resetting."
 
 
+func _load_progress(game: RefCounted, raw: Dictionary) -> void:
+	if raw.version == 1:
+		raw.version = Game.SAVE_VERSION
+		raw.xp = 0
+		if Game.is_boss(int(raw.stage)):
+			raw.remainder = 0.0
+	game.data = raw
+
+
+func _archive_v1(source: String) -> bool:
+	var archive := path + ".v1"
+	if FileAccess.file_exists(archive):
+		var retained: Variant = _read(archive)
+		return Game.valid(retained) and retained.version == 1
+	var temporary := archive + ".tmp"
+	return DirAccess.copy_absolute(source, temporary) == OK and DirAccess.rename_absolute(temporary, archive) == OK
+
+
 func save_progress(game: RefCounted) -> bool:
 	if not writable:
 		return false
-	if not Game.valid(game.data):
+	if not Game.valid(game.data) or game.data.version != Game.SAVE_VERSION:
 		message = "Progress validation failed; previous save retained."
 		return false
 	var temporary := path + ".tmp"
@@ -62,11 +81,17 @@ func save_progress(game: RefCounted) -> bool:
 	if error != OK or not Game.valid(_read(temporary)):
 		message = "Progress write failed; previous save retained."
 		return false
-	if FileAccess.file_exists(path):
-		if not Game.valid(_read(path)):
-			writable = false
-			message = "Save changed unexpectedly. Original retained; restart to recover."
-			return false
+	var has_primary := FileAccess.file_exists(path)
+	var source := path if has_primary else path + ".bak"
+	var previous: Variant = _read(source)
+	if has_primary and not Game.valid(previous):
+		writable = false
+		message = "Save changed unexpectedly. Original retained; restart to recover."
+		return false
+	if previous is Dictionary and previous.get("version") == 1 and Game.valid(previous) and not _archive_v1(source):
+		message = "Cannot preserve the version 1 save. Previous progress retained."
+		return false
+	if has_primary:
 		error = DirAccess.copy_absolute(path, path + ".bak")
 		if error != OK:
 			message = "Cannot preserve previous progress: " + error_string(error)

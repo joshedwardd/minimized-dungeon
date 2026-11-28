@@ -76,10 +76,38 @@ func _initialize() -> void:
 	invalid.upgrades.attack = INF
 	check(not Game.valid(invalid), "nonfinite data rejected")
 	check(not Game.valid({"version": 99}), "unsupported save rejected")
+	_test_progression()
 	_test_storage()
 	if failures == 0:
-		print("PASS: combat, purchases, pet swaps, all rarities, offline cap/idempotence, frame independence, validation, and save recovery.")
+		print("PASS: combat, XP and bosses, upgrades, pets, offline rewards, frame independence, validation, migration, and save recovery.")
 	quit(0 if failures == 0 else 1)
+
+
+func _test_progression() -> void:
+	var game = Game.new()
+	game.data.upgrades.attack = 8
+	for stage in range(1, 5):
+		check(game.select_stage(stage), "previous floor unlocks floor %d" % stage)
+		check(game.advance(game.encounter().duration).wins == 1, "regular floor victory")
+	check(game.select_stage(5), "floor 4 opens the first boss")
+	check(game.encounter().hp == game.encounter(true).hp * 1.5, "boss health scales")
+	game.data.upgrades.attack = 0
+	var defeated: Dictionary = game.advance(game.encounter().duration)
+	check(defeated.battles == 1 and defeated.xp == 0 and game.data.unlocked == 5, "boss defeat grants no rewards or unlock")
+	check(game.select_stage(1) and game.advance(game.encounter().duration).xp == 1, "retreat earns XP")
+	game.data.upgrades.attack = 20
+	game.select_stage(5)
+	var cleared: Dictionary = game.advance(game.encounter().duration)
+	check(cleared.xp == 5 and cleared.eggs >= 1 and game.data.unlocked == 6, "boss clear earns XP and milestone egg")
+	var split = Game.new()
+	split.data = game.data.duplicate(true)
+	var duration: float = game.encounter().duration
+	var batch: Dictionary = game.advance(duration * 50, true)
+	var split_gold := 0
+	for index in 50:
+		split_gold += int(split.advance(duration, true).gold)
+	check(batch.levels >= 2 and batch.gold == 50 * 40 + int(batch.levels) * Game.LEVEL_GOLD, "one advance awards every level bonus")
+	check(batch.gold == split_gold and game.data.xp == split.data.xp, "XP and gold are independent of update size")
 
 
 func _test_storage() -> void:
@@ -124,6 +152,42 @@ func _test_storage() -> void:
 	var missing = Store.new()
 	missing.path = directory.path_join("missing/progress.json")
 	check(not missing.save_progress(game), "write failure reported")
+	var migration = Store.new()
+	migration.path = directory.path_join("old-progress.json")
+	var old: Dictionary = Game.new().data
+	old.version = 1
+	old.erase("xp")
+	old.erase("hero")
+	old.stage = 5
+	old.unlocked = 7
+	old.remainder = 0.5
+	old.gold = 123
+	old.pets = {"moss": 2}
+	old.equipped = "moss"
+	old.milestones = [1, 5]
+	var original := JSON.stringify(old)
+	for source in [migration.path, migration.path + ".bak"]:
+		file = FileAccess.open(source, FileAccess.WRITE)
+		file.store_string(original)
+		file.close()
+		migration.read_progress(restored)
+		check(restored.data.version == 2 and restored.data.xp == 0 and restored.data.remainder == 0, "v1 boss encounter resets on migration")
+		check(restored.data.unlocked == 7 and restored.data.gold == 123 and restored.data.equipped == "moss" and restored.data.milestones.map(func(floor_number): return int(floor_number)) == [1, 5], "v1 progress preserved")
+		check(migration.save_progress(restored) and FileAccess.get_file_as_string(migration.path + ".v1") == original, "v1 primary or backup archived")
+		restored.data.upgrades.attack = 20
+		check(restored.advance(restored.encounter().duration).eggs == 0, "migrated boss milestone does not award another first-clear egg")
+		check(DirAccess.remove_absolute(migration.path) == OK, "remove migration test fixture")
+		check(DirAccess.remove_absolute(migration.path + ".v1") == OK, "remove archive test fixture")
+	old.stage = 2
+	file = FileAccess.open(migration.path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(old))
+	file.close()
+	migration.read_progress(restored)
+	check(restored.data.remainder == 0.5, "v1 regular encounter retains elapsed time")
+	file = FileAccess.open(migration.path + ".v1", FileAccess.WRITE)
+	file.store_string("invalid existing archive")
+	file.close()
+	check(not migration.save_progress(restored) and JSON.parse_string(FileAccess.get_file_as_string(migration.path)).version == 1, "archive failure preserves the v1 primary")
 	var first = Store.new()
 	var second = Store.new()
 	if first.acquire_lock():
